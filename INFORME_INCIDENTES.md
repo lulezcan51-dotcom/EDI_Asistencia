@@ -101,6 +101,6 @@ Se exploró la app sin modificarla, se ejecutó `npm test` como línea base y se
 
 ## Conclusión y control de cambios
 
-- **Commit final (hash):** `PENDIENTE_HASH`
+- **Commit final (hash):** `00240f6` (cierre del código; el commit de documentación posterior solo completa este campo)
 - **Mensaje del commit:** `fix: corregir 6 incidencias de debugging y ampliar gestor de tareas`
 - **Qué aprendí y cómo lo aplicaría a mi app final:** A separar síntoma de causa raíz (la UI no Actualizaba → inmutabilidad rota; el spinner no paraba → estado no restaurado en el `catch`). A usar los tests como especificación del comportamiento esperado y a escribir una prueba de regresión por cada corrección. A mantener claves estables en listas y a controlar el estado de UI desde el padre cuando depende de filtros. Finalmente, a verificar siempre en el entorno real (browser/dispositivo) además de la suite automatizada, y a documentar cada hallazgo con pasos reproducibles para poder defenderlo.
