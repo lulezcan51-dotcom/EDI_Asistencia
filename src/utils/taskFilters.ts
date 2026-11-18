@@ -7,5 +7,8 @@ export function filterTasks(tasks: Task[], query: string, status: TaskStatus): T
     return true;
   });
 
-  return byStatus.filter((task) => task.title.includes(query));
+  const normalizedQuery = query.trim().toLowerCase();
+  return byStatus.filter((task) =>
+    task.title.toLowerCase().includes(normalizedQuery)
+  );
 }
