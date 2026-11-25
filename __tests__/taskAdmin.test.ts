@@ -4,9 +4,9 @@ import {
 } from '../src/utils/taskAdmin';
 
 const demo: Task[] = [
-  { id: '1', title: 'Zeta', description: '', priority: 'baja', completed: true },
-  { id: '2', title: 'Alfa', description: '', priority: 'alta', completed: false },
-  { id: '3', title: 'Media', description: '', priority: 'media', completed: false },
+  { id: 1, title: 'Zeta', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: true, priority: 'baja' },
+  { id: 2, title: 'Alfa', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: false, priority: 'alta' },
+  { id: 3, title: 'Media', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: false, priority: 'media' },
 ];
 
 describe('taskAdmin', () => {
@@ -25,7 +25,7 @@ describe('taskAdmin', () => {
   });
 
   it('filtra por prioridad', () => {
-    expect(filterByPriority(demo, 'alta').map((task) => task.id)).toEqual(['2']);
+    expect(filterByPriority(demo, 'alta').map((task) => task.id)).toEqual([2]);
     expect(filterByPriority(demo, 'todas')).toHaveLength(3);
   });
 
@@ -36,7 +36,7 @@ describe('taskAdmin', () => {
   });
 
   it('limpiar completadas devuelve solo pendientes', () => {
-    expect(clearCompleted(demo).map((task) => task.id)).toEqual(['2', '3']);
+    expect(clearCompleted(demo).map((task) => task.id)).toEqual([2, 3]);
   });
 
   it('cuenta por prioridad', () => {

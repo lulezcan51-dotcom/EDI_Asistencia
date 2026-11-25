@@ -2,9 +2,9 @@ import { filterTasks } from '../src/utils/taskFilters';
 import type { Task } from '../src/types/task';
 
 const demo: Task[] = [
-  { id: '1', title: 'Validar login', description: '', priority: 'alta', completed: false },
-  { id: '2', title: 'Corregir navegación', description: '', priority: 'media', completed: true },
-  { id: '3', title: 'Revisar validaciones', description: '', priority: 'baja', completed: false },
+  { id: 1, title: 'Validar login', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: false, priority: 'media' },
+  { id: 2, title: 'Corregir navegación', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: true, priority: 'media' },
+  { id: 3, title: 'Revisar validaciones', description: '', createdAt: '2026-11-25T10:00:00.000Z', completed: false, priority: 'media' },
 ];
 
 describe('filterTasks', () => {

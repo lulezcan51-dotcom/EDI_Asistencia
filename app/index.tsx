@@ -8,15 +8,22 @@ import { AddTaskSheet, type NewTaskDraft } from '../src/components/AddTaskSheet'
 import { AdminPanel } from '../src/components/AdminPanel';
 import { StatusTabs } from '../src/components/StatusTabs';
 import { TaskCard } from '../src/components/TaskCard';
-import { fetchTasks } from '../src/services/taskService';
+import { ApiError, tasksService } from '../src/services/taskService';
 import { colors, radius, space, touch, type as typeTokens } from '../src/theme/tokens';
 import type { Task, TaskStatus } from '../src/types/task';
 import {
   clearCompleted, completeAll, filterByPriority, getPriorityCounts, sortTasks,
   type PriorityFilter, type TaskSort,
 } from '../src/utils/taskAdmin';
-import { filterTasks } from '../src/utils/taskFilters';
-import { isValidTaskTitle } from '../src/utils/taskValidation';
+import { isValidTaskDescription, isValidTaskTitle } from '../src/utils/taskValidation';
+
+const SEARCH_DEBOUNCE_MS = 275;
+
+function messageFor(caught: unknown): string {
+  if (caught instanceof ApiError) return caught.message;
+  if (caught instanceof Error) return caught.name === 'AbortError' ? 'Consulta cancelada.' : caught.message;
+  return 'Ocurrió un error inesperado.';
+}
 
 export default function TaskManagerScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -26,117 +33,194 @@ export default function TaskManagerScreen() {
   const [sort, setSort] = useState<TaskSort>('default');
   const [newTitle, setNewTitle] = useState('');
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
-  const nextId = useRef(100);
+  const [busy, setBusy] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
 
-  async function loadTasks(simulateFailure = false) {
-    setLoading(true);
+  const filtersRef = useRef<{ search: string; status: TaskStatus }>({ search: '', status: 'todas' });
+  const sequenceRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const creatingRef = useRef(false);
+  const firstRunRef = useRef(true);
+
+  /** Carga la lista con los filtros vigentes. Cancela la consulta anterior. */
+  async function loadTasks(options?: { preserve?: boolean; simulate?: boolean }) {
+    const { preserve = false, simulate = false } = options ?? {};
+    const sequence = ++sequenceRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    if (!preserve) setLoading(true);
     setError(null);
     try {
-      const records = await fetchTasks(simulateFailure);
-      setTasks(records);
-      setLoading(false);
+      if (simulate) {
+        throw new ApiError(503, 'HTTP 503: servidor temporalmente indisponible (simulado)');
+      }
+      const records = await tasksService.list(filtersRef.current, controller.signal);
+      if (sequence !== sequenceRef.current) return;
+      setTasks(records.map((task) => ({ ...task, priority: task.priority ?? 'media' })));
     } catch (caught) {
-      console.error('[taskService] No se cargaron las tareas', caught);
-      setError('No pudimos cargar las tareas. Probá otra vez.');
-      setLoading(false);
+      if ((caught as Error)?.name === 'AbortError' || sequence !== sequenceRef.current) return;
+      setError(`No pudimos cargar las tareas. ${messageFor(caught)}`);
+    } finally {
+      if (sequence === sequenceRef.current) setLoading(false);
     }
   }
 
+  // Primera carga inmediata; luego consulta con debounce al buscar/filtrar.
   useEffect(() => {
-    void loadTasks();
-  }, []);
+    filtersRef.current = { search: query, status };
+    const delay = firstRunRef.current ? 0 : SEARCH_DEBOUNCE_MS;
+    firstRunRef.current = false;
+    const timer = setTimeout(() => void loadTasks({ preserve: true }), delay);
+    return () => clearTimeout(timer);
+  }, [query, status]);
 
-  // Al cambiar cualquier filtro u orden se colapsa el detalle: evita que un
-  // "expandido" quede asociado a otra tarea (incidencia 6 de la guía).
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Colapsa el detalle al cambiar filtros (incidencia 6 de la guía de debugging).
   useEffect(() => {
     setExpandedId(null);
-  }, [status, priorityFilter, query, sort]);
+  }, [priorityFilter, sort]);
 
+  /** Ejecuta una mutación, bloquea la tarjeta y recarga con los filtros activos. */
+  async function mutate(id: number, operation: () => Promise<unknown>, successMessage: string) {
+    if (busy.has(id)) return;
+    setBusy((previous) => new Set(previous).add(id));
+    try {
+      await operation();
+      setFeedback(successMessage);
+      await loadTasks({ preserve: true });
+    } catch (caught) {
+      const apiError = caught as ApiError;
+      setFeedback(
+        apiError.status === 404
+          ? 'La tarea ya no existe; se recargará la lista.'
+          : `No se pudo completar la operación: ${messageFor(caught)}`
+      );
+      if (apiError.status === 404) await loadTasks({ preserve: true });
+    } finally {
+      setBusy((previous) => {
+        const next = new Set(previous);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  async function toggleTask(id: number) {
+    const task = tasks.find((item) => item.id === id);
+    if (!task || busy.has(id)) return;
+    await mutate(
+      id,
+      async () => {
+        const updated = await tasksService.setCompleted(id, !task.completed);
+        setTasks((previous) =>
+          previous.map((item) => item.id === id ? { ...updated, priority: item.priority } : item)
+        );
+      },
+      task.completed ? 'Tarea devuelta a pendiente.' : 'Tarea completada.'
+    );
+  }
+
+  async function deleteTask(id: number) {
+    await mutate(id, () => tasksService.remove(id), 'Tarea eliminada.');
+    setExpandedId(null);
+  }
+
+  async function addTask() {
+    if (creatingRef.current || saving) return;
+    if (!isValidTaskTitle(newTitle)) {
+      setFeedback('Ingresá un nombre válido para continuar.');
+      return;
+    }
+    creatingRef.current = true;
+    setSaving(true);
+    try {
+      await tasksService.create({ title: newTitle.trim() });
+      setNewTitle('');
+      setFeedback('Tarea agregada.');
+      await loadTasks({ preserve: true });
+    } catch (caught) {
+      setFeedback(`No se pudo crear la tarea: ${messageFor(caught)}`);
+    } finally {
+      setSaving(false);
+      creatingRef.current = false;
+    }
+  }
+
+  async function handleSheetSubmit(draft: NewTaskDraft) {
+    if (creatingRef.current || saving) return;
+    if (!isValidTaskTitle(draft.title)) {
+      setFeedback('Ingresá un nombre válido para continuar.');
+      return;
+    }
+    if (!isValidTaskDescription(draft.description)) {
+      setFeedback('La descripción admite hasta 10000 bytes UTF-8.');
+      return;
+    }
+    creatingRef.current = true;
+    setSaving(true);
+    try {
+      // El contrato de la API no incluye `priority`: se conserva solo en la UI.
+      const created = await tasksService.create({ title: draft.title, description: draft.description });
+      setTasks((previous) => [{ ...created, priority: draft.priority }, ...previous]);
+      setFeedback(`Tarea "${draft.title}" agregada (prioridad ${draft.priority}).`);
+      await loadTasks({ preserve: true });
+    } catch (caught) {
+      setFeedback(`No se pudo crear la tarea: ${messageFor(caught)}`);
+    } finally {
+      setSaving(false);
+      creatingRef.current = false;
+    }
+  }
+
+  // Las acciones en lote son locales: el contrato no expone endpoints bulk.
+  function handleCompleteAll() {
+    if (tasks.length === 0) return;
+    setTasks(completeAll);
+    setFeedback('Todas las tareas quedaron completadas en la vista. La API no expone acción en lote.');
+  }
+
+  function handleClearCompleted() {
+    const removed = tasks.filter((task) => task.completed).length;
+    setTasks(clearCompleted);
+    setFeedback(removed > 0 ? `Se ocultaron ${removed} completadas de la vista.` : 'No había tareas completadas.');
+  }
+
+  // El backend ya filtra por búsqueda y estado; aquí solo ordenamos y agrupamos.
   const visibleTasks = useMemo(() => {
     const ordered = sortTasks(tasks, sort);
-    const byPriority = filterByPriority(ordered, priorityFilter);
-    return filterTasks(byPriority, query, status);
-  }, [tasks, query, status, priorityFilter, sort]);
+    return filterByPriority(ordered, priorityFilter);
+  }, [tasks, sort, priorityFilter]);
 
   const total = tasks.length;
   const completed = tasks.filter((task) => task.completed).length;
   const counts = useMemo(() => getPriorityCounts(tasks), [tasks]);
 
-  function toggleTask(id: string) {
-    setTasks((previous) =>
-      previous.map((task) =>
-        task.id === id ? { ...task, completed: !task.completed } : task
-      )
-    );
-  }
-
-  function addTask() {
-    if (!isValidTaskTitle(newTitle)) {
-      setFeedback('Ingresá un nombre válido para continuar.');
-      return;
-    }
-    const task: Task = {
-      id: `nuevo-${nextId.current++}`,
-      title: newTitle.trim(),
-      description: 'Tarea creada durante el taller de debugging.',
-      priority: 'media',
-      completed: false,
-    };
-    setTasks((previous) => [task, ...previous]);
-    setNewTitle('');
-    setFeedback('Tarea agregada.');
-    Keyboard.dismiss();
-  }
-
-  function handleSheetSubmit(draft: NewTaskDraft) {
-    const task: Task = {
-      id: `nuevo-${nextId.current++}`,
-      title: draft.title,
-      description: draft.description || 'Sin descripción.',
-      priority: draft.priority,
-      completed: false,
-    };
-    setTasks((previous) => [task, ...previous]);
-    setFeedback(`Tarea "${draft.title}" agregada (prioridad ${draft.priority}).`);
-  }
-
-  function deleteTask(id: string) {
-    setTasks((previous) => previous.filter((task) => task.id !== id));
-    setFeedback('Tarea eliminada.');
-  }
-
-  function handleCompleteAll() {
-    if (total === 0) return;
-    setTasks(completeAll);
-    setFeedback('Todas las tareas quedaron completadas.');
-  }
-
-  function handleClearCompleted() {
-    const removed = completed;
-    setTasks(clearCompleted);
-    setFeedback(removed > 0 ? `Se eliminaron ${removed} completadas.` : 'No había tareas completadas.');
-  }
-
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <FlatList
-        data={loading ? [] : visibleTasks}
-        keyExtractor={(item) => item.id}
+        data={visibleTasks}
+        keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <TaskCard
             task={item}
+            busy={busy.has(item.id)}
             expanded={expandedId === item.id}
             onExpandChange={(next) => setExpandedId(next ? item.id : null)}
-            onToggle={() => toggleTask(item.id)}
-            onDelete={() => deleteTask(item.id)}
+            onToggle={() => void toggleTask(item.id)}
+            onDelete={() => void deleteTask(item.id)}
           />
         )}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContainer}
+        onRefresh={() => void loadTasks({ preserve: true })}
+        refreshing={loading && tasks.length === 0}
         ListHeaderComponent={
           <>
             <View style={styles.eyebrowRow}>
@@ -153,7 +237,7 @@ export default function TaskManagerScreen() {
             </View>
 
             <Text style={styles.heading}>Gestor de tareas</Text>
-            <Text style={styles.subtitle}>Organizá, filtrá y administrá tus tareas en un solo lugar.</Text>
+            <Text style={styles.subtitle}>Tareas compartidas en tiempo real con la API REST.</Text>
 
             <View style={styles.statsRow}>
               <View style={[styles.stat, styles.statDark]}>
@@ -180,24 +264,27 @@ export default function TaskManagerScreen() {
                 value={newTitle}
                 onChangeText={setNewTitle}
                 returnKeyType="done"
-                onSubmitEditing={addTask}
+                onSubmitEditing={() => void addTask()}
+                editable={!saving}
                 style={styles.addInput}
               />
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Agregar tarea"
                 testID="add-task-button"
+                disabled={saving}
                 hitSlop={touch.hitSlop}
-                style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-                onPress={addTask}
+                style={({ pressed }) => [styles.addButton, saving && styles.disabled, pressed && styles.pressed]}
+                onPress={() => void addTask()}
               >
-                <Text style={styles.addButtonText}>Agregar</Text>
+                {saving ? <ActivityIndicator color={colors.onPrimary} size="small" /> : <Text style={styles.addButtonText}>Agregar</Text>}
               </Pressable>
             </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Abrir formulario completo para agregar tarea"
               testID="open-add-sheet"
+              disabled={saving}
               hitSlop={touch.hitSlop}
               onPress={() => setSheetVisible(true)}
               style={({ pressed }) => [styles.moreOptions, pressed && styles.pressed]}
@@ -212,7 +299,7 @@ export default function TaskManagerScreen() {
               <TextInput
                 testID="search-input"
                 accessibilityLabel="Buscar tareas"
-                placeholder="Buscar por nombre..."
+                placeholder="Buscar por nombre o descripción..."
                 placeholderTextColor={colors.textSubtle}
                 value={query}
                 onChangeText={setQuery}
@@ -238,7 +325,7 @@ export default function TaskManagerScreen() {
                 accessibilityLabel="Recargar datos"
                 hitSlop={touch.hitSlop}
                 style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
-                onPress={() => void loadTasks()}
+                onPress={() => void loadTasks({ preserve: true })}
               >
                 <Text style={styles.retryLabel}>↻ Recargar datos</Text>
               </Pressable>
@@ -248,16 +335,16 @@ export default function TaskManagerScreen() {
                 testID="simulate-error-button"
                 hitSlop={touch.hitSlop}
                 style={({ pressed }) => [styles.simulateButton, pressed && styles.pressed]}
-                onPress={() => void loadTasks(true)}
+                onPress={() => void loadTasks({ simulate: true })}
               >
                 <Text style={styles.simulateLabel}>⚠ Simular error API</Text>
               </Pressable>
             </View>
             {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-            {loading ? (
-              <View style={styles.loading}>
-                <ActivityIndicator color={colors.primary} size="large" />
-                <Text style={styles.loadingLabel}>Consultando tareas…</Text>
+            {loading && tasks.length > 0 ? (
+              <View style={styles.loadingInline}>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={styles.loadingLabel}>Actualizando…</Text>
               </View>
             ) : null}
           </>
@@ -269,10 +356,11 @@ export default function TaskManagerScreen() {
             <Text style={styles.emptyText}>Probá con otros filtros o agregá una tarea nueva.</Text>
           </View>
         ) : null}
-        ListFooterComponent={<Text style={styles.footer}>EDI · Desarrollo de Software Multiplataforma · Auditoría técnica</Text>}
+        ListFooterComponent={<Text style={styles.footer}>EDI · Desarrollo de Software Multiplataforma · API REST</Text>}
       />
       <AddTaskSheet
         visible={sheetVisible}
+        busy={saving}
         onClose={() => setSheetVisible(false)}
         onSubmit={handleSheetSubmit}
       />
@@ -286,25 +374,14 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { ...typeTokens.eyebrow, color: colors.primary },
   helpButton: {
-    backgroundColor: colors.primarySoft,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
-    minHeight: 36,
-    justifyContent: 'center',
+    backgroundColor: colors.primarySoft, paddingVertical: space.sm, paddingHorizontal: space.md,
+    borderRadius: radius.md, minHeight: 36, justifyContent: 'center',
   },
   helpText: { fontWeight: '800', color: colors.primaryStrong, fontSize: 12 },
   heading: { ...typeTokens.heading, color: colors.foreground, marginTop: space.md },
   subtitle: { color: colors.textMuted, fontSize: 13, marginTop: space.sm, marginBottom: space.xxl, lineHeight: 20 },
   statsRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.xxl },
-  stat: {
-    backgroundColor: colors.surface,
-    padding: space.md,
-    borderRadius: radius.lg,
-    flex: 1,
-    borderColor: colors.borderSoft,
-    borderWidth: 1,
-  },
+  stat: { backgroundColor: colors.surface, padding: space.md, borderRadius: radius.lg, flex: 1, borderColor: colors.borderSoft, borderWidth: 1 },
   statDark: { backgroundColor: colors.primaryStrong, borderColor: colors.primaryStrong },
   statLabel: { fontWeight: '800', color: colors.textSubtle, fontSize: 8, letterSpacing: 0.4 },
   statLabelLight: { fontWeight: '800', color: colors.primarySoft, fontSize: 8, letterSpacing: 0.4 },
@@ -314,88 +391,40 @@ const styles = StyleSheet.create({
   sectionHeading: { marginTop: space.xl },
   addRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.sm },
   addInput: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: space.md,
-    color: colors.text,
-    fontSize: 14,
-    minWidth: 0,
-    minHeight: touch.minTarget,
+    flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderSoft,
+    borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.md,
+    color: colors.text, fontSize: 14, minWidth: 0, minHeight: touch.minTarget,
   },
   addButton: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: space.lg,
-    borderRadius: radius.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: touch.minTarget,
+    backgroundColor: colors.accent, paddingHorizontal: space.lg, borderRadius: radius.md,
+    justifyContent: 'center', alignItems: 'center', minHeight: touch.minTarget, minWidth: 84,
   },
   addButtonText: { color: colors.onPrimary, fontWeight: '800', fontSize: 13 },
-  moreOptions: {
-    alignSelf: 'flex-start',
-    paddingVertical: space.sm,
-    minHeight: 30,
-    marginBottom: space.xs,
-  },
+  moreOptions: { alignSelf: 'flex-start', paddingVertical: space.sm, minHeight: 30, marginBottom: space.xs },
   moreOptionsText: { color: colors.primaryStrong, fontSize: 12, fontWeight: '800' },
   feedback: { color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: space.sm },
   searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: radius.md,
-    marginBottom: space.md,
-    paddingHorizontal: space.md,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md,
+    marginBottom: space.md, paddingHorizontal: space.md,
   },
   searchIcon: { color: colors.primary, fontSize: 20, marginRight: space.sm },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 14,
-    paddingVertical: space.md,
-    minHeight: touch.minTarget,
-  },
+  searchInput: { flex: 1, color: colors.text, fontSize: 14, paddingVertical: space.md, minHeight: touch.minTarget },
   actions: { flexDirection: 'row', justifyContent: 'space-between', gap: space.sm, marginBottom: space.md },
-  retryButton: {
-    paddingVertical: space.md,
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.md,
-    flex: 1,
-    alignItems: 'center',
-    minHeight: touch.minTarget,
-    justifyContent: 'center',
-  },
+  retryButton: { paddingVertical: space.md, backgroundColor: colors.primarySoft, borderRadius: radius.md, flex: 1, alignItems: 'center', minHeight: touch.minTarget, justifyContent: 'center' },
   retryLabel: { fontSize: 12, color: colors.primaryStrong, fontWeight: '800' },
   simulateButton: {
-    paddingVertical: space.md,
-    backgroundColor: colors.destructiveSoft,
-    borderRadius: radius.md,
-    flex: 1,
-    alignItems: 'center',
-    minHeight: touch.minTarget,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.destructive,
+    paddingVertical: space.md, backgroundColor: colors.destructiveSoft, borderRadius: radius.md,
+    flex: 1, alignItems: 'center', minHeight: touch.minTarget, justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.destructive,
   },
   simulateLabel: { fontSize: 12, color: colors.destructive, fontWeight: '800' },
   error: {
-    color: colors.destructive,
-    backgroundColor: colors.destructiveSoft,
-    padding: space.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.destructive,
-    fontWeight: '700',
-    marginBottom: space.md,
-    fontSize: 12,
+    color: colors.destructive, backgroundColor: colors.destructiveSoft, padding: space.md,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.destructive,
+    fontWeight: '700', marginBottom: space.md, fontSize: 12,
   },
-  loading: { alignItems: 'center', paddingTop: space.xxl, paddingBottom: space.lg, gap: space.md },
+  loadingInline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, paddingBottom: space.md },
   loadingLabel: { color: colors.textMuted, fontSize: 12 },
   empty: { alignItems: 'center', marginTop: space.xxxl, paddingHorizontal: space.xl },
   emptyIcon: { fontSize: 34, color: colors.primary, marginBottom: space.md },
@@ -403,4 +432,5 @@ const styles = StyleSheet.create({
   emptyText: { color: colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 20, marginTop: space.sm },
   footer: { textAlign: 'center', color: colors.textSubtle, fontSize: 10, paddingTop: space.xxxl },
   pressed: { opacity: 0.7 },
+  disabled: { opacity: 0.6 },
 });

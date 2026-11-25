@@ -1,6 +1,6 @@
 # Gestor de tareas — Taller de debugging y testing (Expo SDK 57)
 
-Proyecto **independiente** de React Native + Expo Router + TypeScript para 3.º año. Contiene defectos **intencionales** que permiten enseñar diagnóstico, debugging, pruebas y documentación. No necesita backend: el servicio de tareas es simulado.
+Proyecto **independiente** de React Native + Expo Router + TypeScript para 3.º año. Contiene defectos **intencionales** que permiten enseñar diagnóstico, debugging, pruebas y documentación. El gestor de tareas está integrado con una **API REST real** (ver `INTEGRACION_API.md`); el botón «Simular error API» permite además probar la recuperación ante fallos sin depender del servidor.
 
 ## Requisitos
 - Node.js **22.13 o superior** (mínimo para SDK 57; usar una versión LTS compatible).
@@ -24,7 +24,7 @@ npm test
 El proyecto contiene pruebas que **deben fallar antes de corregir** algunos errores. Se diseñaron para mostrar cómo un test evidencia un fallo.
 
 ## Qué puede hacer la app
-- Listar tareas con un servicio mock de 700 ms.
+- Listar tareas desde la API REST (`GET /tasks`), con debounce y cancelación de consultas.
 - Buscar tareas y filtrarlas por estado.
 - Agregar y eliminar tareas.
 - Cambiar el estado completada/pendiente.
@@ -40,7 +40,8 @@ src/services/             # Servicio mock, sin llamadas reales
 src/types/                # Tipos TypeScript
 src/utils/                # Filtrado y validaciones
 __tests__/                # Pruebas unitarias y de componentes
-INFORME_INCIDENTES.md     # Plantilla a completar
+INFORME_INCIDENTES.md     # Incidencias documentadas
+INTEGRACION_API.md        # Contrato y recorrido de la API REST
 ```
 
 ## Trabajo del estudiante

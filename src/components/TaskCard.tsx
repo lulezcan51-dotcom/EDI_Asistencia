@@ -7,6 +7,7 @@ type TaskCardProps = {
   task: Task;
   onToggle: () => void;
   onDelete: () => void;
+  busy?: boolean;
   // Control opcional desde la pantalla: evita que un detalle quede "pegado"
   // a otra tarea cuando cambian los filtros. Sin estas props la tarjeta
   // se comporta como componente no controlado (útil en pruebas aisladas).
@@ -20,7 +21,7 @@ const priorityStyle: Record<TaskPriority, { bg: string; fg: string }> = {
   baja: { bg: colors.primarySoft, fg: colors.primary },
 };
 
-export function TaskCard({ task, onToggle, onDelete, expanded: controlledExpanded, onExpandChange }: TaskCardProps) {
+export function TaskCard({ task, onToggle, onDelete, busy = false, expanded: controlledExpanded, onExpandChange }: TaskCardProps) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
 
@@ -47,6 +48,7 @@ export function TaskCard({ task, onToggle, onDelete, expanded: controlledExpande
           hitSlop={touch.hitSlop}
           android_ripple={{ color: colors.primarySoft, borderless: true }}
           onPress={onToggle}
+          disabled={busy}
           style={({ pressed }) => [
             styles.check,
             task.completed && styles.checked,
@@ -62,7 +64,9 @@ export function TaskCard({ task, onToggle, onDelete, expanded: controlledExpande
             <View style={[styles.priorityBadge, { backgroundColor: priority.bg }]}>
               <Text style={[styles.priorityText, { color: priority.fg }]}>{task.priority.toUpperCase()}</Text>
             </View>
-            {task.completed ? (
+            {busy ? (
+              <View style={styles.busyBadge}><Text style={styles.busyText}>Guardando…</Text></View>
+            ) : task.completed ? (
               <View style={styles.doneBadge}>
                 <Text style={styles.doneBadgeText}>✓ COMPLETADA</Text>
               </View>
@@ -90,12 +94,14 @@ export function TaskCard({ task, onToggle, onDelete, expanded: controlledExpande
 
       {expanded ? (
         <View style={styles.details} testID={`details-${task.id}`}>
-          <Text style={styles.description}>{task.description}</Text>
+          <Text style={styles.description}>{task.description || 'Sin descripción.'}</Text>
+          <Text style={styles.date}>Creada: {new Date(task.createdAt).toLocaleString()}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Eliminar ${task.title}`}
             hitSlop={touch.hitSlop}
             onPress={onDelete}
+            disabled={busy}
             style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
           >
             <Text style={styles.deleteText}>Eliminar tarea</Text>
@@ -161,6 +167,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   doneBadgeText: { color: colors.onPrimary, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  busyBadge: { backgroundColor: colors.warningSoft, paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.pill },
+  busyText: { color: colors.warning, fontSize: 9, fontWeight: '800' },
+  date: { color: colors.textSubtle, fontSize: 11, marginTop: space.sm },
   expandButton: {
     width: 34,
     height: 34,

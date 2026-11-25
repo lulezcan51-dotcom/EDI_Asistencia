@@ -1,6 +1,6 @@
 # Informe de incidencias · Gestor de tareas
 
-**Estudiante:** _(completar)_  
+**Estudiante:** _(Lucas Lezcano)_  
 **Fecha:** 18/11/2026  
 **Proyecto / rama Git:** gestor-tareas-debugging / `main` (commit base `0cf095c first commit`)  
 **Entorno (Expo SDK, Android, dispositivo):** Expo SDK 57.0.x, React Native 0.86.0, React 19.2.3, TypeScript 5.9, Node v24.19.0, Windows 11. Verificación en Expo Web (`npx expo start --web`, puerto 19006) e inspección con DevTools del browser. El Expo Go disponible era SDK 58, incompatible con el proyecto (SDK 57), por lo que se usó la build web y se documentó la alternativa de development build.

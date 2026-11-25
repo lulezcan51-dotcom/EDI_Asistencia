@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView,
   StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { colors, radius, space, touch, type as typeTokens } from '../theme/tokens';
@@ -15,8 +15,9 @@ export type NewTaskDraft = {
 
 type Props = {
   visible: boolean;
+  busy?: boolean;
   onClose: () => void;
-  onSubmit: (draft: NewTaskDraft) => void;
+  onSubmit: (draft: NewTaskDraft) => void | Promise<void>;
 };
 
 const priorities: { key: TaskPriority; label: string; emoji: string; hint: string }[] = [
@@ -31,7 +32,7 @@ const priorityTone: Record<TaskPriority, { bg: string; fg: string; border: strin
   baja: { bg: colors.primarySoft, fg: colors.primary, border: colors.primary },
 };
 
-export function AddTaskSheet({ visible, onClose, onSubmit }: Props) {
+export function AddTaskSheet({ visible, busy = false, onClose, onSubmit }: Props) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('media');
@@ -46,12 +47,13 @@ export function AddTaskSheet({ visible, onClose, onSubmit }: Props) {
     }
   }, [visible]);
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (busy) return;
     if (!isValidTaskTitle(title)) {
       setError('El título no puede quedar vacío.');
       return;
     }
-    onSubmit({ title: title.trim(), description: description.trim(), priority });
+    await onSubmit({ title: title.trim(), description: description.trim(), priority });
     onClose();
   }
 
@@ -93,6 +95,7 @@ export function AddTaskSheet({ visible, onClose, onSubmit }: Props) {
                 placeholderTextColor={colors.textSubtle}
                 value={title}
                 onChangeText={(value) => { setTitle(value); setError(''); }}
+                editable={!busy}
                 style={[styles.input, error ? styles.inputError : null]}
                 autoFocus
               />
@@ -106,6 +109,7 @@ export function AddTaskSheet({ visible, onClose, onSubmit }: Props) {
                 placeholderTextColor={colors.textSubtle}
                 value={description}
                 onChangeText={setDescription}
+                editable={!busy}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
@@ -155,11 +159,16 @@ export function AddTaskSheet({ visible, onClose, onSubmit }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel="Guardar tarea"
                   testID="sheet-submit-button"
+                  disabled={busy}
                   hitSlop={touch.hitSlop}
-                  onPress={handleSubmit}
-                  style={({ pressed }) => [styles.submitButton, pressed && styles.pressed]}
+                  onPress={() => void handleSubmit()}
+                  style={({ pressed }) => [styles.submitButton, busy && styles.disabled, pressed && styles.pressed]}
                 >
-                  <Text style={styles.submitText}>Guardar tarea</Text>
+                  {busy ? (
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
+                  ) : (
+                    <Text style={styles.submitText}>Guardar tarea</Text>
+                  )}
                 </Pressable>
               </View>
             </ScrollView>
@@ -285,4 +294,5 @@ const styles = StyleSheet.create({
   },
   submitText: { color: colors.onPrimary, fontWeight: '800', fontSize: 13 },
   pressed: { opacity: 0.7 },
+  disabled: { opacity: 0.6 },
 });
