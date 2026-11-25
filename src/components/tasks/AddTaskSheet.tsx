@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { colors, radius, space, touch } from '../../theme/tokens';
 import { type } from '../../theme/typography';
-import type { TaskPriority } from '../../types/task';
+import type { Task, TaskPriority } from '../../types/task';
 import { isValidTaskTitle } from '../../utils/taskValidation';
 import { Icon } from '../ui/Icon';
 import { Badge, Button, TextField } from '../ui/Primitives';
@@ -15,13 +15,15 @@ export type NewTaskDraft = { title: string; description: string; priority: TaskP
 type Props = {
   visible: boolean;
   busy?: boolean;
+  initial?: Task | null;
   onClose: () => void;
   onSubmit: (draft: NewTaskDraft) => void | Promise<void>;
 };
 
 const tones: Record<TaskPriority, 'high' | 'mid' | 'low'> = { alta: 'high', media: 'mid', baja: 'low' };
 
-export function AddTaskSheet({ visible, busy = false, onClose, onSubmit }: Props) {
+export function AddTaskSheet({ visible, busy = false, initial, onClose, onSubmit }: Props) {
+  const editing = Boolean(initial);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('media');
@@ -29,9 +31,12 @@ export function AddTaskSheet({ visible, busy = false, onClose, onSubmit }: Props
 
   useEffect(() => {
     if (visible) {
-      setTitle(''); setDescription(''); setPriority('media'); setError('');
+      setTitle(initial?.title ?? '');
+      setDescription(initial?.description ?? '');
+      setPriority(initial?.priority ?? 'media');
+      setError('');
     }
-  }, [visible]);
+  }, [visible, initial]);
 
   async function submit() {
     if (busy) return;
@@ -53,8 +58,8 @@ export function AddTaskSheet({ visible, busy = false, onClose, onSubmit }: Props
               <View style={styles.header}>
                 <View style={styles.icon}><Icon name="plus" size={19} color={colors.onAccent} /></View>
                 <View style={styles.headerText}>
-                  <Text style={styles.title}>Nueva tarea</Text>
-                  <Text style={styles.sub}>Completá los detalles</Text>
+                  <Text style={styles.title}>{editing ? 'Editar tarea' : 'Nueva tarea'}</Text>
+                  <Text style={styles.sub}>{editing ? 'Modificá los datos y guardá' : 'Completá los detalles'}</Text>
                 </View>
                 <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" hitSlop={touch.hitSlop} onPress={onClose} style={styles.close}>
                   <Icon name="close" size={17} color={colors.muted} />
@@ -89,7 +94,7 @@ export function AddTaskSheet({ visible, busy = false, onClose, onSubmit }: Props
               <View style={styles.footer}>
                 <View style={styles.cancel}><Button label="Cancelar" variant="ghost" onPress={onClose} disabled={busy} /></View>
                 <View style={styles.submit}>
-                  <Button label={busy ? '' : 'Guardar tarea'} onPress={() => void submit()} disabled={busy} testID="sheet-submit-button" />
+                  <Button label={busy ? '' : editing ? 'Guardar cambios' : 'Guardar tarea'} onPress={() => void submit()} disabled={busy} testID="sheet-submit-button" />
                   {busy ? <ActivityIndicator color={colors.onAccent} size="small" style={styles.spinner} /> : null}
                 </View>
               </View>

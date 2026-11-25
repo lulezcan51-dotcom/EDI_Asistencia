@@ -11,6 +11,7 @@ type Props = {
   task: Task;
   onToggle: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   busy?: boolean;
   index?: number;
   expanded?: boolean;
@@ -21,7 +22,7 @@ const tone: Record<TaskPriority, 'high' | 'mid' | 'low'> = {
   alta: 'high', media: 'mid', baja: 'low',
 };
 
-export function TaskCard({ task, onToggle, onDelete, busy = false, index = 0, expanded: controlled, onExpandChange }: Props) {
+export function TaskCard({ task, onToggle, onDelete, onEdit, busy = false, index = 0, expanded: controlled, onExpandChange }: Props) {
   const reduce = useReduceMotion();
   const entrance = useEntrance(index, reduce);
   const check = usePulse(reduce);
@@ -85,17 +86,31 @@ export function TaskCard({ task, onToggle, onDelete, busy = false, index = 0, ex
             <Icon name="calendar" size={13} color={colors.faint} />
             <Text style={styles.dateText}>{new Date(task.createdAt).toLocaleString()}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Eliminar ${task.title}`}
-            disabled={busy}
-            hitSlop={touch.hitSlop}
-            onPress={onDelete}
-            style={({ pressed }) => [styles.delete, pressed && styles.pressed]}
-          >
-            <Icon name="trash" size={14} color={colors.highFg} />
-            <Text style={styles.deleteText}>Eliminar tarea</Text>
-          </Pressable>
+          <View style={styles.detailActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Editar ${task.title}`}
+              testID={`edit-${task.id}`}
+              disabled={busy}
+              hitSlop={touch.hitSlop}
+              onPress={onEdit}
+              style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+            >
+              <Icon name="edit" size={14} color={colors.ink} />
+              <Text style={styles.actionText}>Editar</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Eliminar ${task.title}`}
+              disabled={busy}
+              hitSlop={touch.hitSlop}
+              onPress={onDelete}
+              style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+            >
+              <Icon name="trash" size={14} color={colors.highFg} />
+              <Text style={[styles.actionText, styles.deleteText]}>Eliminar</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
     </Animated.View>
@@ -129,7 +144,9 @@ const styles = StyleSheet.create({
   description: { ...type.body, color: colors.inkSoft, maxWidth: 520 },
   date: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.md },
   dateText: { ...type.meta, color: colors.faint },
-  delete: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: space.lg, paddingVertical: 6 },
-  deleteText: { ...type.meta, color: colors.highFg },
+  detailActions: { flexDirection: 'row', gap: space.xl, marginTop: space.lg },
+  action: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 },
+  actionText: { ...type.meta, color: colors.ink },
+  deleteText: { color: colors.highFg },
   pressed: { opacity: 0.6 },
 });

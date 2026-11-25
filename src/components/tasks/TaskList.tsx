@@ -15,10 +15,11 @@ type Props = {
   onExpandChange: (id: number | null) => void;
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
+  onEdit: (task: Task) => void;
   onRefresh: () => void;
 };
 
-export function TaskList({ tasks, header, loading, busy, expandedId, onExpandChange, onToggle, onDelete, onRefresh }: Props) {
+export function TaskList({ tasks, header, loading, busy, expandedId, onExpandChange, onToggle, onDelete, onEdit, onRefresh }: Props) {
   return (
     <FlatList
       data={tasks}
@@ -32,6 +33,7 @@ export function TaskList({ tasks, header, loading, busy, expandedId, onExpandCha
           onExpandChange={(next) => onExpandChange(next ? item.id : null)}
           onToggle={() => onToggle(item.id)}
           onDelete={() => onDelete(item.id)}
+          onEdit={() => onEdit(item)}
         />
       )}
       keyboardShouldPersistTaps="handled"

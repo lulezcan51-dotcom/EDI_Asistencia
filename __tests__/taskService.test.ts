@@ -72,4 +72,31 @@ describe('tasksService', () => {
     await expect(tasksService.remove(0)).rejects.toBeInstanceOf(ApiError);
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it('replace crea la versión nueva y elimina la original', async () => {
+    const updated = { ...sample, id: 99, title: 'Editada', description: 'nuevo detalle' };
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(updated, 201))
+      .mockResolvedValueOnce({ ok: true, status: 204, text: async () => '' } as Response);
+    const result = await tasksService.replace(1, { title: 'Editada', description: 'nuevo detalle' }, false);
+    expect(result.title).toBe('Editada');
+    expect(mockFetch.mock.calls.map((call) => call[1].method)).toEqual(['POST', 'DELETE']);
+  });
+
+  it('replace conserva el estado completado y elimina la original', async () => {
+    const updated = { ...sample, id: 100, completed: true };
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(updated, 201))
+      .mockResolvedValueOnce(jsonResponse(updated))
+      .mockResolvedValueOnce({ ok: true, status: 204, text: async () => '' } as Response);
+    const result = await tasksService.replace(1, { title: 'Editada' }, true);
+    expect(result.completed).toBe(true);
+    expect(mockFetch.mock.calls.map((call) => call[1].method)).toEqual(['POST', 'PATCH', 'DELETE']);
+  });
+
+  it('replace conserva la original si falla el alta', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ message: 'error' }, 400));
+    await expect(tasksService.replace(1, { title: 'x' }, false)).rejects.toBeInstanceOf(ApiError);
+    expect(mockFetch.mock.calls).toHaveLength(1);
+  });
 });

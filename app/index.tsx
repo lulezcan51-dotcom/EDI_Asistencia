@@ -32,6 +32,7 @@ export default function TaskManagerScreen() {
   const [sort, setSort] = useState<TaskSort>('default');
   const [newTitle, setNewTitle] = useState('');
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,12 +158,25 @@ export default function TaskManagerScreen() {
     creatingRef.current = true;
     setSaving(true);
     try {
-      const created = await tasksService.create({ title: draft.title, description: draft.description });
-      setTasks((previous) => [{ ...created, priority: draft.priority }, ...previous]);
-      setFeedback(`Tarea "${draft.title}" agregada (prioridad ${draft.priority}).`);
+      if (editingTask) {
+        const updated = await tasksService.replace(
+          editingTask.id,
+          { title: draft.title, description: draft.description },
+          editingTask.completed
+        );
+        setTasks((previous) => previous.map((task) =>
+          task.id === editingTask.id ? { ...updated, priority: draft.priority } : task
+        ));
+        setFeedback(`Tarea "${draft.title}" actualizada.`);
+        setExpandedId(null);
+      } else {
+        const created = await tasksService.create({ title: draft.title, description: draft.description });
+        setTasks((previous) => [{ ...created, priority: draft.priority }, ...previous]);
+        setFeedback(`Tarea "${draft.title}" agregada (prioridad ${draft.priority}).`);
+      }
       await loadTasks({ preserve: true });
     } catch (caught) {
-      setFeedback(`No se pudo crear la tarea: ${messageFor(caught)}`);
+      setFeedback(`No se pudo ${editingTask ? 'actualizar' : 'crear'} la tarea: ${messageFor(caught)}`);
     } finally {
       setSaving(false);
       creatingRef.current = false;
@@ -232,9 +246,16 @@ export default function TaskManagerScreen() {
         onExpandChange={setExpandedId}
         onToggle={(id) => void toggleTask(id)}
         onDelete={(id) => void deleteTask(id)}
+        onEdit={(task) => { setEditingTask(task); setSheetVisible(true); }}
         onRefresh={() => void loadTasks({ preserve: true })}
       />
-      <AddTaskSheet visible={sheetVisible} busy={saving} onClose={() => setSheetVisible(false)} onSubmit={handleSheetSubmit} />
+      <AddTaskSheet
+        visible={sheetVisible}
+        busy={saving}
+        initial={editingTask}
+        onClose={() => { setSheetVisible(false); setEditingTask(null); }}
+        onSubmit={handleSheetSubmit}
+      />
     </SafeAreaView>
   );
 }

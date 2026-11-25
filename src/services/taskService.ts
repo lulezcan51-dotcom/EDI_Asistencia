@@ -111,6 +111,31 @@ export const tasksService = {
     assertId(id);
     return request<void>(`/tasks/${id}`, { method: 'DELETE' });
   },
+
+  /**
+   * El contrato no expone PUT ni PATCH de título/descripción (PATCH solo
+   * acepta `completed`). Para editar se crea la versión nueva y se elimina
+   * la original. Si falla el alta, no se toca la original.
+   */
+  async replace(id: number, input: CreateTaskInput, completed: boolean): Promise<Task> {
+    assertId(id);
+    const created = await this.create(input);
+    let result = created;
+    if (completed) {
+      try {
+        result = await this.setCompleted(created.id, true);
+      } catch (caught) {
+        await this.remove(created.id).catch(() => undefined);
+        throw caught;
+      }
+    }
+    try {
+      await this.remove(id);
+    } catch {
+      throw new ApiError(409, 'La tarea se creó, pero no se pudo eliminar la original.');
+    }
+    return result;
+  },
 };
 
 /**

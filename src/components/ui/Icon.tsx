@@ -4,7 +4,7 @@ import { colors } from '../../theme/tokens';
 export type IconName =
   | 'check' | 'plus' | 'minus' | 'search' | 'trash' | 'sliders'
   | 'reload' | 'alert' | 'chevron' | 'arrowUpRight' | 'calendar'
-  | 'close' | 'arrowLeft' | 'inbox';
+  | 'close' | 'arrowLeft' | 'inbox' | 'edit';
 
 type Props = {
   name: IconName;
@@ -72,6 +72,12 @@ export function Icon({ name, size = 18, color = colors.ink }: Props) {
         <>
           <Path d="M3 13l3-8h12l3 8v6H3v-6z" {...common} />
           <Path d="M3 13h5l1 3h6l1-3h5" {...common} />
+        </>
+      )}
+      {name === 'edit' && (
+        <>
+          <Path d="M4 20l1-4L16 5l3 3L8 19l-4 1z" {...common} />
+          <Path d="M14 7l3 3" {...common} />
         </>
       )}
     </Svg>

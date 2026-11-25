@@ -47,6 +47,9 @@ El prefijo `EXPO_PUBLIC_` es el que usa Expo. La barra final se elimina con `.re
 | `create({title, description})` | `POST /tasks` | 201 y `Task` |
 | `setCompleted(id, completed)` | `PATCH /tasks/{id}` con `{ "completed": true }` | 200 y `Task` |
 | `remove(id)` | `DELETE /tasks/{id}` | 204 sin cuerpo |
+| `replace(id, input, completed)` | `POST` + `PATCH` (si completada) + `DELETE` | edición por recreación |
+
+> **Edición:** el backend no expone `PUT` (405) y `PATCH` rechaza título/descripción (`400 JSON inválido`). Para editar, `replace` crea la versión nueva con los datos modificados, preserva el estado `completed` y elimina la original. Si falla el alta, la original queda intacta; si falla el borrado, se informa el posible duplicado. Por esto el `id` y `createdAt` cambian al editar.
 
 `request<T>` prepara encabezados, ejecuta `fetch`, lee la respuesta como texto, la convierte a JSON y lanza `ApiError(status, mensaje)`si el código HTTP indica error. No se envían credenciales ni cookies.
 
