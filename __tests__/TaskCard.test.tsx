@@ -1,5 +1,5 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import { TaskCard } from '../src/components/TaskCard';
+import { TaskCard } from '../src/components/tasks/TaskCard';
 import type { Task } from '../src/types/task';
 
 const base: Task = {

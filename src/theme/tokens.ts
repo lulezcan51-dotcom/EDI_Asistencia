@@ -1,27 +1,27 @@
-// Design system derivado de ui-ux-pro-max: Flat Design para app de productividad.
-// Paleta teal + acento naranja, contraste AA (>= 4.5:1), sin gradientes ni sombras.
+/**
+ * Utilitarian editorial minimalism.
+ * Color is scarce: warm monochrome + a single graphite accent.
+ * No gradients, no decorative shadows, no emoji-as-icon.
+ */
 export const colors = {
-  primary: '#0F766E',        // teal oscuro: 4.8:1 sobre blanco
-  primaryStrong: '#115E59',
-  primarySoft: '#CCFBF1',
-  primarySurface: '#F0FDFA',
-  accent: '#EA580C',         // naranja para CTA / foco
-  accentSoft: '#FFF7ED',
-  background: '#F0FDFA',
+  canvas: '#F7F6F3',
   surface: '#FFFFFF',
-  surfaceMuted: '#F8FAFC',
-  foreground: '#134E4A',
-  text: '#1E293B',
-  textMuted: '#475569',
-  textSubtle: '#64748B',
-  border: '#99F6E4',
-  borderSoft: '#E2E8F0',
-  destructive: '#DC2626',
-  destructiveSoft: '#FEF2F2',
-  warning: '#B45309',
-  warningSoft: '#FFFBEB',
-  success: '#0D9488',
-  onPrimary: '#FFFFFF',
+  surfaceAlt: '#FBFBFA',
+  ink: '#1A1A19',
+  inkSoft: '#343936',
+  muted: '#787774',
+  faint: '#A3A19D',
+  line: '#EAEAEA',
+  lineStrong: '#D9D7D2',
+  accent: '#2F4858',
+  accentSoft: '#E8ECEF',
+  onAccent: '#FFFFFF',
+  highBg: '#F6E8E6',
+  highFg: '#8A3A32',
+  midBg: '#F5EFDF',
+  midFg: '#7A5C22',
+  lowBg: '#E8EEE9',
+  lowFg: '#41604A',
 } as const;
 
 export const space = {
@@ -29,29 +29,24 @@ export const space = {
   sm: 8,
   md: 12,
   lg: 16,
-  xl: 20,
-  xxl: 24,
-  xxxl: 32,
+  xl: 24,
+  xxl: 32,
+  xxxl: 48,
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  pill: 999,
-} as const;
-
-export const type = {
-  eyebrow: { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1.4 },
-  heading: { fontSize: 30, fontWeight: '800' as const, letterSpacing: -0.5 },
-  section: { fontSize: 12, fontWeight: '800' as const, letterSpacing: 1 },
-  body: { fontSize: 14, lineHeight: 21 },
-  caption: { fontSize: 12, lineHeight: 17 },
-  stat: { fontSize: 24, fontWeight: '800' as const },
+  xs: 4,
+  sm: 6,
+  md: 10,
+  lg: 12,
 } as const;
 
 export const touch = {
-  minTarget: 44,      // 44pt iOS / 48dp Android
+  minTarget: 44,
   hitSlop: { top: 10, bottom: 10, left: 10, right: 10 },
+} as const;
+
+export const layout = {
+  maxWidth: 520,
+  gutter: 20,
 } as const;
